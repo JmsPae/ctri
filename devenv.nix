@@ -36,7 +36,7 @@ in {
         xxd -i shaders/frag.glsl
         echo
         echo "#endif"
-      } > shaders.h
+      } > src/shaders.h
     '';
 
     gen.exec = ''
