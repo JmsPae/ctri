@@ -374,12 +374,12 @@ void g_player_update(float dt, g_player *player, g_actor_stack *stack,
     transform->rotation = atan2(dir_to_cam[1], dir_to_cam[0]);
 }
 
-inline float wrapMax(float x, float max) {
+static inline float wrapMax(float x, float max) {
     /* integer math: `(max + x % max) % max` */
     return fmodf(max + fmodf(x, max), max);
 }
 /* wrap x -> [min,max) */
-inline float wrapMinMax(float x, float min, float max) {
+static inline float wrapMinMax(float x, float min, float max) {
     return min + wrapMax(x - min, max - min);
 }
 

@@ -134,7 +134,7 @@ struct sg_pipeline;
 struct sg_bindings;
 struct sg_pass_action;
 
-inline float rand_float(float min, float max) {
+static inline float rand_float(float min, float max) {
     float scale = rand() / (float)RAND_MAX;
     return min + scale * (max - min);
 }

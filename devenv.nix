@@ -9,6 +9,7 @@
     pkg-config
     libGL
     tinyxxd
+    python3
     xorg.libX11
     xorg.libXi
     xorg.libXcursor
@@ -31,9 +32,22 @@ in {
         echo "#ifndef SHADERS_H"
         echo "#define SHADERS_H"
         echo
-        xxd -i shaders/vert.glsl
+        xxd -n shader_vert -i shaders/vert.glsl
         echo
-        xxd -i shaders/frag.glsl
+        xxd -n shader_frag -i shaders/frag.glsl
+        echo
+        echo "#endif"
+      } > src/shaders.h
+    '';
+
+    genshades.exec = ''
+      {
+        echo "#ifndef SHADERS_H"
+        echo "#define SHADERS_H"
+        echo
+        xxd -n shader_vert -i shaders/vert_es3.glsl
+        echo
+        xxd -n shader_frag -i shaders/frag_es3.glsl
         echo
         echo "#endif"
       } > src/shaders.h
@@ -47,6 +61,18 @@ in {
     genrel.exec = ''
       cmake -B ./build -DCMAKE_BUILD_TYPE=Release
       genshad
+    '';
+
+    genwasm.exec = ''
+        export EM_CACHE=${./.}/.cache
+      emcmake cmake -B ./build -DCMAKE_TOOLCHAIN_FILE=$EMROOT/cmake/Modules/Platform/Emscripten.cmake -DCMAKE_BUILD_TYPE=Debug
+      genshades
+    '';
+
+    genwasmrel.exec = ''
+        export EM_CACHE=${./.}/.cache
+      emcmake cmake -B ./build -DCMAKE_TOOLCHAIN_FILE=$EMROOT/cmake/Modules/Platform/Emscripten.cmake -DCMAKE_BUILD_TYPE=Release
+      genshades
     '';
 
     build.exec = ''
@@ -63,6 +89,8 @@ in {
       gdb build/ctri
     '';
   };
-
-  env.LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath deps;
+  env = {
+    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath deps;
+    EMROOT = ''${pkgs.emscripten.outPath}/share/emscripten'';
+  };
 }

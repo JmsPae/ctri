@@ -67,6 +67,10 @@ stable_index_view *stable_index_add_view(stable_index *index,
 stable_index_view *stable_index_get_view(stable_index *index,
                                          stable_index_mask_t mask);
 
+// Check the stable index element for any change to its mask, and adjust views
+// accordingly.
+void stable_index_view_update(stable_index_view *view, stable_index_t idx);
+
 // Fetch an available index handle with a default mask.
 stable_index_handle stable_index_create(stable_index *stack);
 
@@ -81,15 +85,17 @@ static inline bool stable_index_mask_contains(stable_index_mask_t a,
 }
 
 // Update an index view with a newly masked element.
-// Use stable_index_mask_contains to check if the element belongs to the view.
+// Use stable_index_mask_contains to check if the element belongs to the
+// view.
 void stable_index_view_add(stable_index_view *view, const stable_index_t idx);
 
-// Free an 'alive' index handle, incrementing the generation and moving the id
-// into the 'available' list.
+// Free an 'alive' index handle, incrementing the generation and moving the
+// id into the 'available' list.
 void stable_index_remove(stable_index_handle handle, stable_index *stack);
 
 // Remove an element from an index.
-// Use stable_index_mask_contains to check if the element belongs to the view.
+// Use stable_index_mask_contains to check if the element belongs to the
+// view.
 void stable_index_view_remove(stable_index_view *view,
                               const stable_index_t idx);
 

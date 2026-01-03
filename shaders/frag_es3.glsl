@@ -1,4 +1,4 @@
-#version 330 core
+#version 300 es  
 // Fragment Shader
 precision mediump float;
 

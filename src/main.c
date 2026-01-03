@@ -29,12 +29,12 @@ void create_main_pipeline() {
     sg_shader shader = sg_make_shader(&(sg_shader_desc){
         .vertex_func =
             (sg_shader_function){
-                .source = (const char *)shaders_vert_glsl,
+                .source = (const char *)shader_vert,
                 .entry = "main",
             },
         .fragment_func =
             (sg_shader_function){
-                .source = (const char *)shaders_frag_glsl,
+                .source = (const char *)shader_frag,
                 .entry = "main",
             },
 
@@ -244,8 +244,13 @@ sapp_desc sokol_main(int argc, char *argv[]) {
         .width = 1280,
         .height = 720,
         .sample_count = 2,
+#ifdef __EMSCRIPTEN__
+        .gl_major_version = 3,
+        .gl_minor_version = 0,
+#else
         .gl_major_version = 3,
         .gl_minor_version = 3,
+#endif
         .window_title = "Triangle",
         .icon.sokol_default = true,
         .logger.func = slog_func,

@@ -148,6 +148,20 @@ void stable_index_view_add(stable_index_view *view, const stable_index_t idx) {
     view->size++;
 }
 
+void stable_index_view_update(stable_index_view *view,
+                              const stable_index_t idx) {
+    // Target index for insertion into the 'alive' list.
+    int32_t i = view->size - 1;
+
+    while (i >= 0 && view->indices[i] > idx) {
+        view->indices[i + 1] = view->indices[i];
+        i--;
+    }
+
+    view->indices[i + 1] = idx;
+    view->size++;
+}
+
 // Remove a living actor
 void stable_index_remove(stable_index_handle handle, stable_index *stack) {
     int32_t i = stack->availiable_size - 1;
@@ -193,14 +207,6 @@ void stable_index_view_remove(stable_index_view *view,
 
     view->size--;
 }
-
-// Get a living actor, otherwise NULL.
-// g_actor *g_stable_index_get(g_stable_index *stack, g_actor_handle handle) {
-//   if (stack->generations[handle.index] == handle.generation) {
-//     return &stack->actors[handle.index];
-//   }
-//   return NULL;
-// }
 
 void stable_index_delete(stable_index *index) {
     for (int i = 0; i < index->view_size; i++) {
