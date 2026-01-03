@@ -22,25 +22,22 @@ target_include_directories(ctri PRIVATE external)
 
 
 if (EMSCRIPTEN)
-    set(CMAKE_EXECUTABLE_SUFFIX ".html")
     target_compile_definitions(ctri PRIVATE SOKOL_GLES3)
+
     target_compile_options(ctri PRIVATE
         -msse -msse2 -msimd128
-        -sALLOW_MEMORY_GROWTH
-        -s USE_WEBGL2=1
-    )
-    target_link_options(ctri PRIVATE -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sUSE_WEBGL2=1 -sALLOW_MEMORY_GROWTH -sMALLOC=emmalloc --closure=1)
-    target_link_libraries(ctri PRIVATE GL dl m minitrace)
-
-    if (CMAKE_BUILD_TYPE STREQUAL "Release")
-        target_compile_options(ctri PRIVATE
-            -Os
-        )
-    else()
-        target_compile_options(ctri PRIVATE
+        $<$<CONFIG:Debug>:
             -O0
-        )
-    endif()
+        >
+        $<$<CONFIG:Release>:
+            -Os
+        >
+    )
+
+    target_link_options(ctri PRIVATE -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sUSE_WEBGL2=1 -sALLOW_MEMORY_GROWTH -sMALLOC=emmalloc --closure=1)
+
+    # Keeping minitrace just to keep the macros from error'ing
+    target_link_libraries(ctri PRIVATE minitrace)
 
 else()
     if (CMAKE_BUILD_TYPE STREQUAL "Release")
