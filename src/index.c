@@ -9,7 +9,7 @@ size_t stable_index_remaining_cap(stable_index *stack) {
     return stack->capacity - stack->alive_size;
 }
 
-void g_stable_index_print(stable_index *stack) {
+void _stable_index_print(stable_index *stack) {
     printf("alive: ");
     for (size_t i = 0; i < stack->alive_size; i++) {
         stable_index_t idx = stack->alive[i];
@@ -29,18 +29,22 @@ void g_stable_index_print(stable_index *stack) {
 
 void stable_index_init(stable_index *stack, size_t capacity,
                        size_t view_capacity) {
+    stack->capacity = capacity;
+    stack->view_capacity = view_capacity;
+
     stack->alive = malloc(sizeof(stable_index_t) * capacity);
     stack->available = malloc(sizeof(stable_index_t) * capacity);
     stack->generations = malloc(sizeof(stable_index_t) * capacity);
     stack->masks = malloc(sizeof(stable_index_mask_t) * capacity);
-    stack->views = malloc(sizeof(stable_index_view) * view_capacity);
 
-    stack->capacity = capacity;
-    stack->view_capacity = view_capacity;
+    stack->views = malloc(sizeof(stable_index_view) * view_capacity);
+    stack->view_keys = malloc(sizeof(stable_index_view) * view_capacity);
+
     // Reversed order for easy yoinks
     for (size_t i = 0; i < capacity; i++) {
         stack->available[i] = (capacity - 1) - i;
         stack->generations[i] = 0;
+        stack->masks[i] = 0;
     }
 
     stack->view_size = 0;
@@ -49,24 +53,29 @@ void stable_index_init(stable_index *stack, size_t capacity,
 
 #ifdef DEBUG_STABLE_INDEX
     printf("\ng_stable_index_init\n");
-    g_stable_index_print(stack);
+    _stable_index_print(stack);
 #endif
 }
 
-stable_index_view *
-stable_index_add_view(stable_index *stack,
-                      bool (*use_index)(const stable_index_handle)) {
+stable_index_view *stable_index_add_view(stable_index *stack,
+                                         stable_index_mask_t mask) {
     if (stack->view_size >= stack->view_capacity) {
         printf("Reached view capacity!\n");
         return nullptr;
     }
+
     stable_index_view *view = &stack->views[stack->view_size];
 
-    view->indices = malloc(sizeof(stable_index_t) * stack->capacity);
-    view->use_handle = use_index;
+    stack->view_keys[stack->view_size] = (stable_index_view_key){
+        .mask = mask,
+        .arr_idx = stack->view_size,
+    };
 
-    view->indices_size = 0;
-    view->indices_capacity = stack->capacity;
+    view->mask = mask;
+    view->indices = malloc(sizeof(stable_index_t) * stack->capacity);
+
+    view->size = 0;
+    view->capacity = stack->capacity;
 
     stack->view_size++;
 
@@ -74,6 +83,11 @@ stable_index_add_view(stable_index *stack,
 }
 
 stable_index_handle stable_index_create(stable_index *stack) {
+    return stable_index_create_mask(stack, STABLE_INDEX_MASK_ALIVE);
+}
+
+stable_index_handle stable_index_create_mask(stable_index *stack,
+                                             stable_index_mask_t mask) {
     if (stack->availiable_size == 0) {
         printf("Reached maxiumum actor count!\n");
         return (stable_index_handle){.index = 0, .generation = 0};
@@ -82,6 +96,7 @@ stable_index_handle stable_index_create(stable_index *stack) {
     // Index of the new index handle
     stable_index_t new_idx = stack->available[stack->availiable_size - 1];
     stable_index_t new_gen = stack->generations[new_idx];
+    stack->masks[new_idx] = mask | STABLE_INDEX_MASK_ALIVE;
 
     stable_index_handle ret = {.index = new_idx, .generation = new_gen};
 
@@ -98,16 +113,25 @@ stable_index_handle stable_index_create(stable_index *stack) {
     stack->availiable_size--;
     stack->alive_size++;
 
-    for (i = 0; i < stack->view_size; i++) {
-        stack->views[i].use_handle(ret);
-    }
-
 #ifdef DEBUG_STABLE_INDEX
     printf("\ng_stable_index_create\n");
-    g_stable_index_print(stack);
+    _stable_index_print(stack);
 #endif
 
     return ret;
+}
+
+void stable_index_view_add(stable_index_view *view, const stable_index_t idx) {
+    // Target index for insertion into the 'alive' list.
+    int32_t i = view->size - 1;
+
+    while (i >= 0 && view->indices[i] > idx) {
+        view->indices[i + 1] = view->indices[i];
+        i--;
+    }
+
+    view->indices[i + 1] = idx;
+    view->size++;
 }
 
 // Remove a living actor
@@ -145,8 +169,28 @@ void stable_index_remove(stable_index_handle handle, stable_index *stack) {
 
 #ifdef DEBUG_STABLE_INDEX
     printf("\ng_stable_index_remove\n");
-    g_stable_index_print(stack);
+    _stable_index_print(stack);
 #endif
+}
+
+void stable_index_view_remove(stable_index_view *view,
+                              const stable_index_t idx) {
+    int32_t i = 0;
+
+    while (view->indices[i] != idx && i < view->size) {
+        i++;
+    }
+
+    if (i >= view->size || view->indices[i] != idx) {
+        printf("Couldn't find index in view!\n");
+        return;
+    }
+
+    for (int j = i; j < view->size - 1; j++) {
+        view->indices[j] = view->indices[j + 1];
+    }
+
+    view->size--;
 }
 
 // Get a living actor, otherwise NULL.
@@ -166,5 +210,7 @@ void stable_index_delete(stable_index *index) {
     free(index->available);
     free(index->generations);
     free(index->masks);
+
+    free(index->view_keys);
     free(index->views);
 }
