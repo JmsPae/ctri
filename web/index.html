@@ -34,14 +34,14 @@
 		<dir class="overlay" id="overlay-text">Loading...</dir>
 		<script type='text/javascript'>
 			var Module = {};
-			fetch('build/ctri.wasm')
+			fetch('ctri.wasm')
 			.then(response =>
 				response.arrayBuffer()
 			).then(buffer => {
 				Module.canvas = document.getElementById("canvas");
 				Module.wasmBinary = buffer;
 				var script = document.createElement('script');
-				script.src = "build/ctri.js";
+				script.src = "ctri.js";
 				script.onload = function() {
 					console.log("Emscripten boilerplate loaded.")
 				}
