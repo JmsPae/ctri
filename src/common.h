@@ -67,23 +67,27 @@ size_t g_static_meshes_add(g_static_meshes *meshes, mat4 transform,
 
 void g_static_meshes_delete(g_static_meshes *meshes);
 
-enum g_actor_type : uint8_t {
-    ACTOR_TYPE_PLAYER,
-    ACTOR_TYPE_ALLY,
-    ACTOR_TYPE_ENEMY,
+// Stable index mask
+enum g_actor_type : stable_index_mask_t {
+    ACTOR_TYPE_ALIVE = 1 << 0,
+    ACTOR_TYPE_PLAYER = 1 << 1,
+    ACTOR_TYPE_ALLY = 1 << 2,
+    ACTOR_TYPE_ENEMY = 1 << 3,
 };
 
-#define MAX_G_ACTORS (size_t)1024
+#define MAX_G_ACTORS (size_t)128
 
 typedef struct {
     stable_index actor_index;
+
+    stable_index_view *alive_view;
+    stable_index_view *enemy_view;
 
     vec4 colors[MAX_G_ACTORS];
     g_transform transforms[MAX_G_ACTORS];
     mat4 global_transforms[MAX_G_ACTORS];
     g_velocity velocities[MAX_G_ACTORS];
     float drags[MAX_G_ACTORS];
-    enum g_actor_type types[MAX_G_ACTORS];
 
 } g_actor_stack;
 

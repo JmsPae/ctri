@@ -6,16 +6,23 @@
 // #define DEBUG_STABLE_INDEX
 
 size_t stable_index_remaining_cap(stable_index *stack) {
-    return stack->capacity - stack->alive_size;
+    return stack->availiable_size;
+}
+
+void _stable_index_view_print(stable_index *index, stable_index_view *view) {
+    printf("\nview %i: ", view->mask);
+    for (size_t i = 0; i < view->size; i++) {
+        stable_index_t idx = view->indices[i];
+        stable_index_t gen = index->generations[idx];
+        printf("{ i: %u, g: %u }, ", idx, gen);
+    }
 }
 
 void _stable_index_print(stable_index *stack) {
-    printf("alive: ");
-    for (size_t i = 0; i < stack->alive_size; i++) {
-        stable_index_t idx = stack->alive[i];
-        stable_index_t gen = stack->generations[idx];
-        printf("{ i: %u, g: %u }, ", idx, gen);
+    for (int i = 0; i < stack->view_size; i++) {
+        _stable_index_view_print(stack, &stack->views[i]);
     }
+
     printf("\navailable: ");
 
     for (size_t i = 0; i < stack->availiable_size; i++) {
@@ -27,95 +34,102 @@ void _stable_index_print(stable_index *stack) {
     printf("\n");
 }
 
-void stable_index_init(stable_index *stack, size_t capacity,
+void stable_index_init(stable_index *index, size_t capacity,
                        size_t view_capacity) {
-    stack->capacity = capacity;
-    stack->view_capacity = view_capacity;
+    index->capacity = capacity;
+    index->view_capacity = view_capacity;
 
-    stack->alive = malloc(sizeof(stable_index_t) * capacity);
-    stack->available = malloc(sizeof(stable_index_t) * capacity);
-    stack->generations = malloc(sizeof(stable_index_t) * capacity);
-    stack->masks = malloc(sizeof(stable_index_mask_t) * capacity);
+    index->available = malloc(sizeof(stable_index_t) * capacity);
+    index->generations = malloc(sizeof(stable_index_t) * capacity);
+    index->masks = malloc(sizeof(stable_index_mask_t) * capacity);
 
-    stack->views = malloc(sizeof(stable_index_view) * view_capacity);
-    stack->view_keys = malloc(sizeof(stable_index_view) * view_capacity);
+    index->views = malloc(sizeof(stable_index_view) * view_capacity);
+    index->view_keys = malloc(sizeof(stable_index_view) * view_capacity);
 
     // Reversed order for easy yoinks
     for (size_t i = 0; i < capacity; i++) {
-        stack->available[i] = (capacity - 1) - i;
-        stack->generations[i] = 0;
-        stack->masks[i] = 0;
+        index->available[i] = (capacity - 1) - i;
+        index->generations[i] = 0;
+        index->masks[i] = 0;
     }
 
-    stack->view_size = 0;
-    stack->alive_size = 0;
-    stack->availiable_size = capacity;
+    index->view_size = 0;
+    index->availiable_size = capacity;
 
 #ifdef DEBUG_STABLE_INDEX
     printf("\ng_stable_index_init\n");
-    _stable_index_print(stack);
+    _stable_index_print(index);
 #endif
 }
 
-stable_index_view *stable_index_add_view(stable_index *stack,
+stable_index_view *stable_index_add_view(stable_index *index,
                                          stable_index_mask_t mask) {
-    if (stack->view_size >= stack->view_capacity) {
+    if (index->view_size >= index->view_capacity) {
         printf("Reached view capacity!\n");
         return nullptr;
     }
 
-    stable_index_view *view = &stack->views[stack->view_size];
+    stable_index_view *view = &index->views[index->view_size];
 
-    stack->view_keys[stack->view_size] = (stable_index_view_key){
+    index->view_keys[index->view_size] = (stable_index_view_key){
         .mask = mask,
-        .arr_idx = stack->view_size,
+        .arr_idx = index->view_size,
     };
 
     view->mask = mask;
-    view->indices = malloc(sizeof(stable_index_t) * stack->capacity);
+    view->indices = malloc(sizeof(stable_index_t) * index->capacity);
 
     view->size = 0;
-    view->capacity = stack->capacity;
+    view->capacity = index->capacity;
 
-    stack->view_size++;
+    index->view_size++;
 
     return view;
 }
 
-stable_index_handle stable_index_create(stable_index *stack) {
-    return stable_index_create_mask(stack, STABLE_INDEX_MASK_ALIVE);
+stable_index_view *stable_index_get_view(stable_index *index,
+                                         stable_index_mask_t mask) {
+    for (int i = 0; i < index->view_size; i++) {
+        if (index->view_keys[i].mask == mask) {
+            return &index->views[index->view_keys[i].arr_idx];
+        }
+    }
+
+    return NULL;
 }
 
-stable_index_handle stable_index_create_mask(stable_index *stack,
+stable_index_handle stable_index_create(stable_index *stack) {
+    return stable_index_create_mask(stack, 0);
+}
+
+stable_index_handle stable_index_create_mask(stable_index *index,
                                              stable_index_mask_t mask) {
-    if (stack->availiable_size == 0) {
+    if (index->availiable_size == 0) {
         printf("Reached maxiumum actor count!\n");
         return (stable_index_handle){.index = 0, .generation = 0};
     }
 
     // Index of the new index handle
-    stable_index_t new_idx = stack->available[stack->availiable_size - 1];
-    stable_index_t new_gen = stack->generations[new_idx];
-    stack->masks[new_idx] = mask | STABLE_INDEX_MASK_ALIVE;
+    stable_index_t new_idx = index->available[index->availiable_size - 1];
+    stable_index_t new_gen = index->generations[new_idx];
+    index->masks[new_idx] = mask;
 
     stable_index_handle ret = {.index = new_idx, .generation = new_gen};
 
-    // Target index for insertion into the 'alive' list.
-    int32_t i = stack->alive_size - 1;
-
-    while (i >= 0 && stack->alive[i] > new_idx) {
-        stack->alive[i + 1] = stack->alive[i];
-        i--;
+    // stable_index_view_add(index->alive_view, new_idx);
+    for (int j = 0; j < index->view_size; j++) {
+        if (stable_index_mask_contains(index->masks[new_idx],
+                                       index->views[j].mask)) {
+            stable_index_view_add(&index->views[j], ret.index);
+        }
     }
 
-    stack->alive[i + 1] = new_idx;
     // stack->actors[new_actor_idx] = actor;
-    stack->availiable_size--;
-    stack->alive_size++;
+    index->availiable_size--;
 
 #ifdef DEBUG_STABLE_INDEX
-    printf("\ng_stable_index_create\n");
-    _stable_index_print(stack);
+    printf("\ng_stable_index_create_mask\n");
+    _stable_index_print(index);
 #endif
 
     return ret;
@@ -136,36 +150,23 @@ void stable_index_view_add(stable_index_view *view, const stable_index_t idx) {
 
 // Remove a living actor
 void stable_index_remove(stable_index_handle handle, stable_index *stack) {
-    int32_t i = 0;
-
-    while (stack->alive[i] != handle.index && i < stack->alive_size) {
-        i++;
-    }
-
-    if (i >= stack->alive_size || stack->alive[i] != handle.index) {
-        printf("Couldn't find alive actor!\n");
-        return;
-    }
-
-    stable_index_t found = stack->alive[i];
-
-    for (int j = i; j < stack->alive_size - 1; j++) {
-        stack->alive[j] = stack->alive[j + 1];
-    }
-
-    stack->alive_size--;
-
-    i = stack->availiable_size - 1;
+    int32_t i = stack->availiable_size - 1;
 
     // Shift elements that are smaller than value
-    while (i >= 0 && stack->available[i] < found) {
+    while (i >= 0 && stack->available[i] < handle.index) {
         stack->available[i + 1] = stack->available[i];
         i--;
     }
 
-    stack->available[i + 1] = found;
-    stack->generations[found]++;
+    stack->available[i + 1] = handle.index;
+    stack->generations[handle.index]++;
     stack->availiable_size++;
+
+    for (int j = 0; j < stack->view_size; j++) {
+        if (stable_index_mask_contains(stack->views[j].mask, stack->masks[i])) {
+            stable_index_view_remove(&stack->views[j], handle.index);
+        }
+    }
 
 #ifdef DEBUG_STABLE_INDEX
     printf("\ng_stable_index_remove\n");
@@ -182,7 +183,7 @@ void stable_index_view_remove(stable_index_view *view,
     }
 
     if (i >= view->size || view->indices[i] != idx) {
-        printf("Couldn't find index in view!\n");
+        printf("Couldn't find index in view %i!\n", view->mask);
         return;
     }
 
@@ -206,7 +207,6 @@ void stable_index_delete(stable_index *index) {
         free(index->views[i].indices);
     }
 
-    free(index->alive);
     free(index->available);
     free(index->generations);
     free(index->masks);

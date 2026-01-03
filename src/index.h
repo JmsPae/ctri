@@ -7,12 +7,6 @@
 typedef unsigned int stable_index_t;
 typedef unsigned short stable_index_mask_t;
 
-// Represents the nth bit of the mask.
-enum stable_index_reserved_masks : stable_index_mask_t {
-    STABLE_INDEX_MASK_ALIVE = 0b01, // Otherwise, availiable.
-    STABLE_INDEX_NUM_RESERVED = 1,
-};
-
 typedef struct {
     stable_index_t index;
     stable_index_t generation;
@@ -38,9 +32,6 @@ typedef struct {
 
 // A generational index
 typedef struct {
-    // Every 'alive' index
-    stable_index_t *alive;
-
     // Every 'available' index
     stable_index_t *available;
 
@@ -50,7 +41,6 @@ typedef struct {
     stable_index_mask_t *masks;
 
     size_t capacity;
-    size_t alive_size;
     size_t availiable_size;
 
     // Share view_size and view_capacity with views
@@ -63,14 +53,18 @@ typedef struct {
 } stable_index;
 
 // Check the remaining capacity
-size_t stable_index_remaining_cap(stable_index *stack);
+size_t stable_index_remaining_cap(stable_index *index);
 
 // Populate a new stable index with default values
-void stable_index_init(stable_index *stack, size_t capacity,
+void stable_index_init(stable_index *index, size_t capacity,
                        size_t view_capacity);
 
 // Add a new view to an index, derived from a given mask.
-stable_index_view *stable_index_add_view(stable_index *stack,
+stable_index_view *stable_index_add_view(stable_index *index,
+                                         stable_index_mask_t mask);
+
+// Gets an existing view, otherwise returns null.
+stable_index_view *stable_index_get_view(stable_index *index,
                                          stable_index_mask_t mask);
 
 // Fetch an available index handle with a default mask.

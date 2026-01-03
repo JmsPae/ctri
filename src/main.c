@@ -164,8 +164,9 @@ void event(const sapp_event *event) {
 void g_draw_actors() {
     sg_apply_bindings(&state.triangle_bind);
 
-    for (size_t i = 0; i < state.world.actors.actor_index.alive_size; i++) {
-        uint32_t actor_idx = state.world.actors.actor_index.alive[i];
+    stable_index_view *alive = state.world.actors.alive_view;
+    for (size_t i = 0; i < alive->size; i++) {
+        uint32_t actor_idx = alive->indices[i];
 
         mat4 *actor_global_transform =
             &state.world.actors.global_transforms[actor_idx];

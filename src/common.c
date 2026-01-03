@@ -60,6 +60,12 @@ bool g_actor_type_hostility(enum g_actor_type at) { return at >> 1 == 1; }
 
 void g_actor_stack_init(g_actor_stack *stack) {
     stable_index_init(&stack->actor_index, MAX_G_ACTORS, 8);
+
+    stack->alive_view =
+        stable_index_add_view(&stack->actor_index, ACTOR_TYPE_ALIVE);
+
+    stack->enemy_view = stable_index_add_view(
+        &stack->actor_index, ACTOR_TYPE_ENEMY | ACTOR_TYPE_ALIVE);
 }
 
 typedef struct {
@@ -72,14 +78,14 @@ typedef struct {
 
 stable_index_handle g_actor_stack_create(g_actor_stack *stack,
                                          g_actor_stack_create_ctx *ctx) {
-    stable_index_handle handle = stable_index_create(&stack->actor_index);
+    stable_index_handle handle =
+        stable_index_create_mask(&stack->actor_index, ctx->type);
 
     if (ctx != NULL) {
         glm_vec4_copy(ctx->color, stack->colors[handle.index]);
         stack->transforms[handle.index] = ctx->transform;
         stack->drags[handle.index] = ctx->drag;
         stack->velocities[handle.index] = ctx->velocity;
-        stack->types[handle.index] = ctx->type;
     }
 
     return handle;
@@ -222,11 +228,12 @@ void g_actor_stack_phys(float dt, g_actor_stack *stack) {
     static vec3 to;
     static mat3 m1, m2;
 
-    for (int i = 0; i < stack->actor_index.alive_size - 1; i++) {
-        for (int j = i + 1; j < stack->actor_index.alive_size; j++) {
-            const stable_index_t idx1 = stack->actor_index.alive[i];
+    const stable_index_view *alive = stack->alive_view;
+    for (int i = 0; i < alive->size - 1; i++) {
+        for (int j = i + 1; j < alive->size; j++) {
+            const stable_index_t idx1 = alive->indices[i];
             const stable_index_t idx2 =
-                stack->actor_index.alive[j % stack->actor_index.capacity];
+                alive->indices[j % stack->actor_index.capacity];
 
             g_transform *tr1 = &stack->transforms[idx1];
             g_transform *tr2 = &stack->transforms[idx2];
@@ -268,8 +275,8 @@ void g_actor_stack_phys(float dt, g_actor_stack *stack) {
         }
     }
 
-    for (size_t i = 0; i < stack->actor_index.alive_size; i++) {
-        stable_index_t index = stack->actor_index.alive[i];
+    for (size_t i = 0; i < alive->size; i++) {
+        stable_index_t index = alive->indices[i];
 
         g_transform *transform = &stack->transforms[index];
         g_velocity *vel = &stack->velocities[index];
@@ -291,8 +298,9 @@ void g_actor_stack_update(float dt, g_actor_stack *stack) {
 }
 
 void g_actor_stack_transform(g_actor_stack *stack) {
-    for (size_t i = 0; i < stack->actor_index.alive_size; i++) {
-        stable_index_t index = stack->actor_index.alive[i];
+    const stable_index_view *alive = stack->alive_view;
+    for (size_t i = 0; i < alive->size; i++) {
+        stable_index_t index = alive->indices[i];
 
         g_transform *transform = &stack->transforms[index];
         mat4 *global_transform = &stack->global_transforms[index];
@@ -379,11 +387,9 @@ void g_enemy_update(float dt, g_actor_stack *stack,
                     stable_index_handle player_handle) {
     g_transform *player_transform = &stack->transforms[player_handle.index];
 
-    for (int i = 0; i < stack->actor_index.alive_size; i++) {
-        size_t idx = stack->actor_index.alive[i];
-
-        if (stack->types[idx] != ACTOR_TYPE_ENEMY)
-            continue;
+    stable_index_view *enemies = stack->enemy_view;
+    for (int i = 0; i < enemies->size; i++) {
+        size_t idx = enemies->indices[i];
 
         g_velocity *vel = &stack->velocities[idx];
         g_transform *transform = &stack->transforms[idx];
@@ -484,27 +490,37 @@ void g_world_init(g_world *world) {
     world->player.actor_handle = g_actor_stack_create(
         &world->actors, &(g_actor_stack_create_ctx){
                             .color = {0.0f, 0.0f, 0.0f, 1.0},
-                            .type = ACTOR_TYPE_PLAYER,
+                            .type = ACTOR_TYPE_PLAYER | ACTOR_TYPE_ALIVE,
                             .transform.position = {2.0f, 0.0f},
                             .drag = 3.0f,
                         });
 
-    // triangle_intersection(g_unit_triangle, g_unit_triangle);
+    stable_index_handle a = g_actor_stack_create(
+        &world->actors, &(g_actor_stack_create_ctx){
+                            .color = {1.0f, 0.0f, 0.0f, 1.0},
+                            .type = ACTOR_TYPE_ENEMY | ACTOR_TYPE_ALIVE,
+                            .transform.z = -1.0f,
+                            .transform.position =
+                                {
+                                    rand_float(-10.0f, 10.0f),
+                                    rand_float(-10.0f, 10.0f),
+                                },
+                            .drag = 1.0f,
+                        });
+    g_actor_stack_remove(&world->actors, a);
 
-    for (int i = 0; i < 6; i++) {
-        g_actor_stack_create(&world->actors,
-                             &(g_actor_stack_create_ctx){
-                                 .color = {1.0f, 0.0f, 0.0f, 1.0},
-                                 .type = ACTOR_TYPE_ENEMY,
-                                 .transform.z = -1.0f,
-                                 .transform.position =
-                                     {
-                                         rand_float(-10.0f, 10.0f),
-                                         rand_float(-10.0f, 10.0f),
-                                     },
-                                 .drag = 1.0f,
-                             });
-    }
+    g_actor_stack_create(&world->actors,
+                         &(g_actor_stack_create_ctx){
+                             .color = {1.0f, 0.0f, 0.0f, 1.0},
+                             .type = ACTOR_TYPE_ENEMY | ACTOR_TYPE_ALIVE,
+                             .transform.z = -1.0f,
+                             .transform.position =
+                                 {
+                                     rand_float(-10.0f, 10.0f),
+                                     rand_float(-10.0f, 10.0f),
+                                 },
+                             .drag = 1.0f,
+                         });
 }
 
 void g_world_update(float dt, g_world *world) {
