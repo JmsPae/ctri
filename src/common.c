@@ -68,14 +68,6 @@ void g_actor_stack_init(g_actor_stack *stack) {
         &stack->actor_index, ACTOR_TYPE_ENEMY | ACTOR_TYPE_ALIVE);
 }
 
-typedef struct {
-    vec4 color;
-    g_transform transform;
-    g_velocity velocity;
-    float drag;
-    enum g_actor_type type;
-} g_actor_stack_create_ctx;
-
 stable_index_handle g_actor_stack_create(g_actor_stack *stack,
                                          g_actor_stack_create_ctx *ctx) {
     stable_index_handle handle =
@@ -219,8 +211,6 @@ void g_phys_intersection(vec2 t1[3], vec2 t2[3],
     *result = res;
 }
 
-inline void g_transformed_unit_triangle() {}
-
 void g_actor_stack_phys(float dt, g_actor_stack *stack) {
     static vec2 t1[3];
     static vec2 t2[3];
@@ -288,25 +278,29 @@ void g_actor_stack_phys(float dt, g_actor_stack *stack) {
     }
 }
 
-// Update all actor's basic values.
-void g_actor_stack_update(float dt, g_actor_stack *stack) {
-
-    // for (size_t i = 0; i < stack->actor_index.num_alive; i++) {
-    //   stable_index_t index = stack->actor_index.alive[i];
-    //   stack->timers[index] -= dt;
-    // }
-}
-
-void g_actor_stack_transform(g_actor_stack *stack) {
+void g_actor_stack_transform(g_actor_stack *stack, float fixed_overstep) {
     const stable_index_view *alive = stack->alive_view;
     for (size_t i = 0; i < alive->size; i++) {
         stable_index_t index = alive->indices[i];
 
+        g_velocity *velocity = &stack->velocities[index];
         g_transform *transform = &stack->transforms[index];
+
+        g_transform lerped_transform = (g_transform){
+            .rotation = transform->rotation,
+            .z = transform->z,
+        };
+
+        glm_vec2_copy(transform->position, lerped_transform.position);
+        glm_vec2_muladds(velocity->linear, fixed_overstep,
+                         lerped_transform.position);
+
+        lerped_transform.rotation += velocity->angular * fixed_overstep;
+
         mat4 *global_transform = &stack->global_transforms[index];
 
         mat4 t = GLM_MAT4_IDENTITY_INIT;
-        g_transform_model(transform, &t);
+        g_transform_model(&lerped_transform, &t);
         glm_mat4_copy(t, *global_transform);
     }
 }
@@ -462,92 +456,4 @@ void g_camera_proj(const g_camera *camera, const float aspect, mat4 proj) {
     const float hw = (camera->view_height * aspect) * 0.5f;
 
     glm_ortho(-hw, hw, -hh, hh, -10.0f, 10.0, proj);
-}
-
-// --------------------------------- g_world ---------------------------------
-
-void g_world_init(g_world *world) {
-    world->start_time = stm_now();
-
-    world->static_meshes = g_static_meshes_init(8);
-
-    mat4 transform = GLM_MAT4_IDENTITY_INIT;
-    glm_translated_z(transform, -8.0f);
-
-    g_static_meshes_add(
-        &world->static_meshes, transform,
-        (g_vertex[]){
-            {g_unit_triangle[0][0], g_unit_triangle[0][1], 128, 128, 128, 255},
-            {g_unit_triangle[1][0], g_unit_triangle[1][1], 128, 128, 128, 255},
-            {g_unit_triangle[2][0], g_unit_triangle[2][1], 128, 128, 128, 255},
-        },
-        3);
-
-    g_actor_stack_init(&world->actors);
-    glm_vec2((vec2){0.0f, 0.0f}, world->camera.position);
-    world->camera.view_height = 15.0f;
-
-    world->player.actor_handle = g_actor_stack_create(
-        &world->actors, &(g_actor_stack_create_ctx){
-                            .color = {0.0f, 0.0f, 0.0f, 1.0},
-                            .type = ACTOR_TYPE_PLAYER | ACTOR_TYPE_ALIVE,
-                            .transform.position = {2.0f, 0.0f},
-                            .drag = 3.0f,
-                        });
-
-    stable_index_handle a = g_actor_stack_create(
-        &world->actors, &(g_actor_stack_create_ctx){
-                            .color = {1.0f, 0.0f, 0.0f, 1.0},
-                            .type = ACTOR_TYPE_ENEMY | ACTOR_TYPE_ALIVE,
-                            .transform.z = -1.0f,
-                            .transform.position =
-                                {
-                                    rand_float(-10.0f, 10.0f),
-                                    rand_float(-10.0f, 10.0f),
-                                },
-                            .drag = 1.0f,
-                        });
-    g_actor_stack_remove(&world->actors, a);
-
-    g_actor_stack_create(&world->actors,
-                         &(g_actor_stack_create_ctx){
-                             .color = {1.0f, 0.0f, 0.0f, 1.0},
-                             .type = ACTOR_TYPE_ENEMY | ACTOR_TYPE_ALIVE,
-                             .transform.z = -1.0f,
-                             .transform.position =
-                                 {
-                                     rand_float(-10.0f, 10.0f),
-                                     rand_float(-10.0f, 10.0f),
-                                 },
-                             .drag = 1.0f,
-                         });
-}
-
-void g_world_update(float dt, g_world *world) {
-    MTR_BEGIN("frame", "world_update");
-    world->elapsed_time = stm_since(world->start_time);
-
-    world->physics_tick += dt;
-
-    MTR_BEGIN("frame", "physics");
-    while (world->physics_tick >= g_fixed_dt) {
-        g_actor_stack_phys(g_fixed_dt, &world->actors);
-        g_player_update(g_fixed_dt, &world->player, &world->actors,
-                        &world->camera);
-        g_enemy_update(g_fixed_dt, &world->actors, world->player.actor_handle);
-        world->physics_tick -= g_fixed_dt;
-    }
-    MTR_END("frame", "physics");
-
-    g_actor_stack_update(dt, &world->actors);
-
-    g_camera_update(&world->player, &world->actors, dt, &world->camera);
-
-    g_actor_stack_transform(&world->actors);
-    MTR_END("frame", "world_update");
-}
-
-void g_world_delete(g_world *world) {
-    g_actor_stack_delete(&world->actors);
-    g_static_meshes_delete(&world->static_meshes);
 }

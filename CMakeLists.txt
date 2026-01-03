@@ -3,7 +3,6 @@ project(ctri C)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
@@ -12,14 +11,17 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 include(CheckIPOSupported)
 check_ipo_supported(RESULT supported OUTPUT error)
 
-add_subdirectory(external/minitrace)
+add_executable(
+    ctri 
+    src/main.c src/world.c src/common.c src/index.c
+)
 
-add_executable(ctri src/main.c src/common.c src/index.c)
+# No particular reason, it's been 3 years and I wanted a proper bool.
 set_property(TARGET ctri PROPERTY C_STANDARD 23)
 
 target_include_directories(ctri PRIVATE external)
 
-
+add_subdirectory(external/minitrace)
 
 if (EMSCRIPTEN)
     target_compile_definitions(ctri PRIVATE SOKOL_GLES3)

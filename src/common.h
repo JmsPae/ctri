@@ -34,18 +34,37 @@ typedef struct {
     float angular;
 } g_velocity;
 
-// "Actor" is just a triangle boi that can move and do things.
-// typedef struct {
-//   g_transform transform;
-//   vec4 color;
-//   vec2 linear_vel;
-//   float angular_vel;
-// } g_actor;
-
 typedef struct {
     float x, y;
     uint8_t r, g, b, a;
 } g_vertex;
+
+static inline float rand_float(float min, float max) {
+    float scale = rand() / (float)RAND_MAX;
+    return min + scale * (max - min);
+}
+
+// Initialize a g_transform
+inline void g_transform_init(float x, float y, float rotation, float z,
+                             g_transform *transform) {
+    transform->position[0] = x;
+    transform->position[1] = y;
+    transform->rotation = rotation;
+    transform->z = z;
+}
+
+// Apply a g_transform to an existing mat4
+static inline void g_transform_model(g_transform *transform, mat4 *m) {
+    glm_translate(*m, (vec3){transform->position[0], transform->position[1],
+                             transform->z});
+    glm_rotate_z(*m, transform->rotation, *m);
+}
+
+// Apply a g_transform to an existing mat3 (ignoring z)
+static inline void g_transform_model_2d(g_transform *transform, mat3 *m) {
+    glm_translate2d(*m, transform->position);
+    glm_rotate2d(*m, transform->rotation);
+}
 
 // sg_bindings decl
 struct sg_bindings;
@@ -75,7 +94,7 @@ enum g_actor_type : stable_index_mask_t {
     ACTOR_TYPE_ENEMY = 1 << 3,
 };
 
-#define MAX_G_ACTORS (size_t)128
+#define MAX_G_ACTORS (size_t)512
 
 typedef struct {
     stable_index actor_index;
@@ -90,6 +109,27 @@ typedef struct {
     float drags[MAX_G_ACTORS];
 
 } g_actor_stack;
+
+typedef struct {
+    vec4 color;
+    g_transform transform;
+    g_velocity velocity;
+    float drag;
+    enum g_actor_type type;
+} g_actor_stack_create_ctx;
+
+void g_actor_stack_init(g_actor_stack *stack);
+
+stable_index_handle g_actor_stack_create(g_actor_stack *stack,
+                                         g_actor_stack_create_ctx *ctx);
+
+void g_actor_stack_remove(g_actor_stack *stack, stable_index_handle handle);
+
+void g_actor_stack_phys(float dt, g_actor_stack *stack);
+
+void g_actor_stack_transform(g_actor_stack *stack, float fixed_overstep);
+
+void g_actor_stack_delete(g_actor_stack *stack);
 
 typedef struct {
     bool left;
@@ -113,67 +153,19 @@ typedef struct {
     vec2 mouse_pos;
 } g_camera;
 
-static const float g_fixed_dt = 1.0f / 64;
+void g_enemy_update(float dt, g_actor_stack *stack,
+                    stable_index_handle player_handle);
+void g_camera_update(g_player *player, g_actor_stack *stack, float dt,
+                     g_camera *camera);
 
-typedef struct {
-    g_actor_stack actors;
-    g_static_meshes static_meshes;
-
-    g_camera camera;
-    g_player player;
-
-    // Time at application start
-    uint64_t start_time;
-    // Time since application start
-    uint64_t elapsed_time;
-
-    float physics_tick;
-} g_world;
-
-struct sg_pipeline;
-struct sg_bindings;
-struct sg_pass_action;
-
-static inline float rand_float(float min, float max) {
-    float scale = rand() / (float)RAND_MAX;
-    return min + scale * (max - min);
-}
-
-// Initialize a g_transform
-inline void g_transform_init(float x, float y, float rotation, float z,
-                             g_transform *transform) {
-    transform->position[0] = x;
-    transform->position[1] = y;
-    transform->rotation = rotation;
-    transform->z = z;
-}
-
-// Apply a g_transform to an existing mat4
-static inline void g_transform_model(g_transform *transform, mat4 *m) {
-    glm_translate(*m, (vec3){transform->position[0], transform->position[1],
-                             transform->z});
-    glm_rotate_z(*m, transform->rotation, *m);
-}
-
-// Apply a g_transform to an existing mat3 (ignoring z)
-static inline void g_transform_model_2d(g_transform *transform, mat3 *m) {
-    glm_translate2d(*m, transform->position);
-    glm_rotate2d(*m, transform->rotation);
-}
-
-bool g_actor_type_hostility(enum g_actor_type at);
-
-// sokol_app.h
 struct sapp_event;
 
 void g_player_input_map(const struct sapp_event *event, g_input_map *imap);
+void g_player_update(float dt, g_player *player, g_actor_stack *actors,
+                     g_camera *camera);
 
 void g_camera_mouse(const struct sapp_event *event, g_camera *camera);
 void g_camera_view(g_camera *camera, mat4 view);
 void g_camera_proj(const g_camera *camera, const float aspect, mat4 proj);
-
-void g_world_init(g_world *world);
-void g_world_update(float dt, g_world *world);
-void g_world_delete(g_world *world);
 
 #endif

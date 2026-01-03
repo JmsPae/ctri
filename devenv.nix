@@ -64,13 +64,13 @@ in {
     '';
 
     genwasm.exec = ''
-        export EM_CACHE=${./.}/.cache
+      export EM_CACHE=$PWD/.cache
       emcmake cmake -B ./build -DCMAKE_TOOLCHAIN_FILE=$EMROOT/cmake/Modules/Platform/Emscripten.cmake -DCMAKE_BUILD_TYPE=Debug
       genshades
     '';
 
     genwasmrel.exec = ''
-        export EM_CACHE=${./.}/.cache
+      export EM_CACHE=$PWD/.cache
       emcmake cmake -B ./build -DCMAKE_TOOLCHAIN_FILE=$EMROOT/cmake/Modules/Platform/Emscripten.cmake -DCMAKE_BUILD_TYPE=Release
       genshades
     '';

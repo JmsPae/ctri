@@ -14,6 +14,7 @@
 
 #include "common.h"
 #include "shaders.h"
+#include "world.h"
 
 static struct {
     sg_pipeline pipeline;
@@ -192,7 +193,6 @@ void g_draw_static() {
 
 void frame(void) {
     MTR_BEGIN("frame", "frame");
-
     float dt = stm_sec(stm_laptime(&state.time));
 
     g_world_update(dt, &state.world);
@@ -226,6 +226,7 @@ void frame(void) {
 void cleanup(void) {
     g_world_delete(&state.world);
     sg_destroy_pipeline(state.pipeline);
+
     sg_shutdown();
 
     mtr_flush();
