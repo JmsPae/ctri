@@ -28,36 +28,50 @@ void g_world_init(g_world *world) {
         &world->actors, &(g_actor_stack_create_ctx){
                             .color = {0.0f, 0.0f, 0.0f, 1.0},
                             .type = ACTOR_TYPE_PLAYER | ACTOR_TYPE_ALIVE,
-                            .transform.position = {2.0f, 0.0f},
+                            .transform.position = {0.0f, 0.0f},
+                            .transform.scale = GLM_VEC2_ONE_INIT,
                             .drag = 3.0f,
                         });
 
-    stable_index_handle a = g_actor_stack_create(
-        &world->actors, &(g_actor_stack_create_ctx){
-                            .color = {1.0f, 0.0f, 0.0f, 1.0},
-                            .type = ACTOR_TYPE_ENEMY | ACTOR_TYPE_ALIVE,
-                            .transform.z = -1.0f,
-                            .transform.position =
-                                {
-                                    rand_float(-10.0f, 10.0f),
-                                    rand_float(-10.0f, 10.0f),
-                                },
-                            .drag = 1.0f,
-                        });
-    g_actor_stack_remove(&world->actors, a);
+    // g_actor_stack_create(&world->actors,
+    //                      &(g_actor_stack_create_ctx){
+    //                          .color = {1.0f, 0.0f, 0.0f, 1.0},
+    //                          .type = ACTOR_TYPE_ENEMY | ACTOR_TYPE_ALIVE,
+    //                          .transform.z = -1.0f,
+    //                          .transform.position =
+    //                              {
+    //                                  rand_float(-10.0f, 10.0f),
+    //                                  rand_float(-10.0f, 10.0f),
+    //                              },
+    //                          .transform.scale = {1.0f, 1.0f},
+    //                          .drag = 4.0f,
+    //                      });
 
     g_actor_stack_create(&world->actors,
                          &(g_actor_stack_create_ctx){
-                             .color = {1.0f, 0.0f, 0.0f, 1.0},
-                             .type = ACTOR_TYPE_ENEMY | ACTOR_TYPE_ALIVE,
+                             .color = {0.0f, 1.0f, 0.0f, 1.0},
+                             .type = ACTOR_TYPE_ALIVE,
                              .transform.z = -1.0f,
-                             .transform.position =
-                                 {
-                                     rand_float(-10.0f, 10.0f),
-                                     rand_float(-10.0f, 10.0f),
-                                 },
-                             .drag = 1.0f,
+                             .transform.position = {-5.0f, 0.0f},
+                             .transform.scale = {1.0f, 1.0f},
+                             .drag = 4.0f,
                          });
+
+    for (int i = 0; i < 10; i++) {
+        g_actor_stack_create(&world->actors,
+                             &(g_actor_stack_create_ctx){
+                                 .color = {0.0f, 0.5f, 1.0f, 1.0},
+                                 .type = ACTOR_TYPE_ALLY | ACTOR_TYPE_ALIVE,
+                                 .transform.z = -1.0f,
+                                 .transform.position =
+                                     {
+                                         rand_float(-10.0f, 10.0f),
+                                         rand_float(-10.0f, 10.0f),
+                                     },
+                                 .transform.scale = {0.5f, 0.5f},
+                                 .drag = 4.0f,
+                             });
+    }
 }
 
 void g_world_update(float dt, g_world *world) {
@@ -71,12 +85,11 @@ void g_world_update(float dt, g_world *world) {
         g_actor_stack_phys(g_fixed_dt, &world->actors);
         g_player_update(g_fixed_dt, &world->player, &world->actors,
                         &world->camera);
+        g_ally_update(g_fixed_dt, &world->actors, world->player.actor_handle);
         g_enemy_update(g_fixed_dt, &world->actors, world->player.actor_handle);
         world->physics_tick -= g_fixed_dt;
     }
     MTR_END("frame", "physics");
-
-    // g_actor_stack_update(dt, &world->actors);
 
     g_camera_update(&world->player, &world->actors, dt, &world->camera);
 

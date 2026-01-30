@@ -24,6 +24,7 @@ extern const vec2 g_unit_triangle[3];
 
 typedef struct {
     vec2 position;
+    vec2 scale;
     // Rotation in radians
     float rotation;
     float z;
@@ -44,13 +45,18 @@ static inline float rand_float(float min, float max) {
     return min + scale * (max - min);
 }
 
+static inline float g_vec2_length(vec2 v) {
+    return sqrtf(glm_pow2(v[0]) + glm_pow2(v[1]));
+}
+
 // Initialize a g_transform
-inline void g_transform_init(float x, float y, float rotation, float z,
-                             g_transform *transform) {
-    transform->position[0] = x;
-    transform->position[1] = y;
-    transform->rotation = rotation;
-    transform->z = z;
+inline void g_transform_defaults(g_transform *transform) {
+    transform->position[0] = 0.0f;
+    transform->position[1] = 0.0f;
+    transform->scale[0] = 1.0f;
+    transform->scale[1] = 1.0f;
+    transform->rotation = 0.0f;
+    transform->z = 0.0f;
 }
 
 // Apply a g_transform to an existing mat4
@@ -58,12 +64,14 @@ static inline void g_transform_model(g_transform *transform, mat4 *m) {
     glm_translate(*m, (vec3){transform->position[0], transform->position[1],
                              transform->z});
     glm_rotate_z(*m, transform->rotation, *m);
+    glm_scale(*m, (vec3){transform->scale[0], transform->scale[1], 0.0f});
 }
 
 // Apply a g_transform to an existing mat3 (ignoring z)
 static inline void g_transform_model_2d(g_transform *transform, mat3 *m) {
     glm_translate2d(*m, transform->position);
     glm_rotate2d(*m, transform->rotation);
+    glm_scale2d(*m, transform->scale);
 }
 
 // sg_bindings decl
@@ -101,6 +109,7 @@ typedef struct {
 
     stable_index_view *alive_view;
     stable_index_view *enemy_view;
+    stable_index_view *ally_view;
 
     vec4 colors[MAX_G_ACTORS];
     g_transform transforms[MAX_G_ACTORS];
@@ -155,6 +164,9 @@ typedef struct {
 
 void g_enemy_update(float dt, g_actor_stack *stack,
                     stable_index_handle player_handle);
+
+void g_ally_update(float dt, g_actor_stack *stack,
+                   stable_index_handle player_handle);
 void g_camera_update(g_player *player, g_actor_stack *stack, float dt,
                      g_camera *camera);
 

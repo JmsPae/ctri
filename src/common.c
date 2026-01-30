@@ -66,6 +66,9 @@ void g_actor_stack_init(g_actor_stack *stack) {
 
     stack->enemy_view = stable_index_add_view(
         &stack->actor_index, ACTOR_TYPE_ENEMY | ACTOR_TYPE_ALIVE);
+
+    stack->ally_view = stable_index_add_view(
+        &stack->actor_index, ACTOR_TYPE_ALLY | ACTOR_TYPE_ALIVE);
 }
 
 stable_index_handle g_actor_stack_create(g_actor_stack *stack,
@@ -211,6 +214,11 @@ void g_phys_intersection(vec2 t1[3], vec2 t2[3],
     *result = res;
 }
 
+static inline void g_vec2_mirror(vec2 n, vec2 v) {
+    const float dot = glm_vec2_dot(v, n);
+    glm_vec2_mulsubs(n, (2.0f * dot) * (dot < 0.0f), v);
+}
+
 void g_actor_stack_phys(float dt, g_actor_stack *stack) {
     static vec2 t1[3];
     static vec2 t2[3];
@@ -253,14 +261,16 @@ void g_actor_stack_phys(float dt, g_actor_stack *stack) {
                 g_velocity *v1 = &stack->velocities[idx1];
                 g_velocity *v2 = &stack->velocities[idx2];
 
-                vec2 vel_comb;
-                glm_vec2_add(v1->linear, v2->linear, vel_comb);
+                float t1_mul = (!res.first ? 1.0f : -1.0f);
+                float t2_mul = (res.first ? 1.0f : -1.0f);
 
-                float t1_mul = (!res.first ? 1.0f : -1.0f) / dt;
-                float t2_mul = (res.first ? 1.0f : -1.0f) / dt;
+                glm_vec2_muladds(res.normal, res.overlap * t1_mul,
+                                 tr1->position);
+                glm_vec2_muladds(res.normal, res.overlap * t2_mul,
+                                 tr2->position);
 
-                glm_vec2_muladds(res.normal, res.overlap * t1_mul, v1->linear);
-                glm_vec2_muladds(res.normal, res.overlap * t2_mul, v2->linear);
+                printf("%s, %f, %f %f \n", res.first ? "true" : "false",
+                       res.overlap, res.normal[0], res.normal[1]);
             }
         }
     }
@@ -292,6 +302,7 @@ void g_actor_stack_transform(g_actor_stack *stack, float fixed_overstep) {
         };
 
         glm_vec2_copy(transform->position, lerped_transform.position);
+        glm_vec2_copy(transform->scale, lerped_transform.scale);
         glm_vec2_muladds(velocity->linear, fixed_overstep,
                          lerped_transform.position);
 
@@ -345,6 +356,15 @@ void g_player_input_map(const sapp_event *event, g_input_map *imap) {
     }
 }
 
+static inline float wrapMax(float x, float max) {
+    /* integer math: `(max + x % max) % max` */
+    return fmodf(max + fmodf(x, max), max);
+}
+/* wrap x -> [min,max) */
+static inline float wrapMinMax(float x, float min, float max) {
+    return min + wrapMax(x - min, max - min);
+}
+
 void g_player_update(float dt, g_player *player, g_actor_stack *stack,
                      g_camera *camera) {
     if (!g_actor_stack_valid(stack, player->actor_handle)) {
@@ -365,20 +385,63 @@ void g_player_update(float dt, g_player *player, g_actor_stack *stack,
     glm_vec2_sub(dir_to_cam, transform->position, dir_to_cam);
     glm_vec2_normalize(dir_to_cam);
 
-    transform->rotation = atan2(dir_to_cam[1], dir_to_cam[0]);
+    vel->angular =
+        wrapMinMax(atan2(dir_to_cam[1], dir_to_cam[0]) - transform->rotation,
+                   -M_PI, M_PI) *
+        20.0f;
+
+    // transform->rotation = atan2(dir_to_cam[1], dir_to_cam[0]);
 }
 
-static inline float wrapMax(float x, float max) {
-    /* integer math: `(max + x % max) % max` */
-    return fmodf(max + fmodf(x, max), max);
-}
-/* wrap x -> [min,max) */
-static inline float wrapMinMax(float x, float min, float max) {
-    return min + wrapMax(x - min, max - min);
+void g_ally_update(float dt, g_actor_stack *stack,
+                   stable_index_handle player_handle) {
+    if (!g_actor_stack_valid(stack, player_handle)) {
+        printf("No player actor!");
+        return;
+    }
+
+    float r = 1.0f;
+    float c = r * M_PI * 2;
+    int n = (int)(c / 2.0f);
+    int ci = 0;
+
+    g_transform *player_transform = &stack->transforms[player_handle.index];
+
+    stable_index_view *allies = stack->ally_view;
+    for (int i = 0; i < allies->size; i++) {
+        stable_index_t idx = allies->indices[i];
+
+        g_transform *transform = &stack->transforms[idx];
+
+        if (i >= n) {
+            r += 1.0f;
+            c = r * M_PI * 2;
+            n = (int)(c / 2.0f);
+            ci = 0;
+        }
+
+        vec2 target_pos = {r * cos(ci * (M_PI / n)), r * sin(ci * (M_PI / n))};
+        ci++;
+
+        g_velocity *vel = &stack->velocities[idx];
+
+        vec2 dir;
+        glm_vec2_sub(target_pos, transform->position, dir);
+        float len = glm_min(g_vec2_length(dir) * 10.0f, 10.0f);
+
+        if (len > 0.0001f) {
+            glm_vec2_muladds(dir, dt, vel->linear);
+        }
+    }
 }
 
 void g_enemy_update(float dt, g_actor_stack *stack,
                     stable_index_handle player_handle) {
+    if (!g_actor_stack_valid(stack, player_handle)) {
+        printf("No player actor!");
+        return;
+    }
+
     g_transform *player_transform = &stack->transforms[player_handle.index];
 
     stable_index_view *enemies = stack->enemy_view;
