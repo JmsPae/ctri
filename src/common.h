@@ -115,7 +115,8 @@ typedef struct {
     g_transform transforms[MAX_G_ACTORS];
     mat4 global_transforms[MAX_G_ACTORS];
     g_velocity velocities[MAX_G_ACTORS];
-    float drags[MAX_G_ACTORS];
+    float drag[MAX_G_ACTORS];
+    float mass[MAX_G_ACTORS];
 
 } g_actor_stack;
 
@@ -124,6 +125,7 @@ typedef struct {
     g_transform transform;
     g_velocity velocity;
     float drag;
+    float mass;
     enum g_actor_type type;
 } g_actor_stack_create_ctx;
 

@@ -79,8 +79,9 @@ stable_index_handle g_actor_stack_create(g_actor_stack *stack,
     if (ctx != NULL) {
         glm_vec4_copy(ctx->color, stack->colors[handle.index]);
         stack->transforms[handle.index] = ctx->transform;
-        stack->drags[handle.index] = ctx->drag;
         stack->velocities[handle.index] = ctx->velocity;
+        stack->drag[handle.index] = ctx->drag;
+        stack->mass[handle.index] = ctx->mass;
     }
 
     return handle;
@@ -139,6 +140,12 @@ static inline bool triangle_axis_overlap(vec2 t1[3], vec2 norm, vec2 t2[3],
     return false;
 }
 
+// Calculate the overlap of two seperate ranges
+static inline float get_overlap(float min_a, float max_a, float min_b,
+                                float max_b) {
+    return glm_min(max_a, max_b) - glm_max(min_a, min_b);
+}
+
 typedef struct {
     bool intersection;
     // Whether or not the intersection normal originates from the first triangle
@@ -147,7 +154,8 @@ typedef struct {
     vec2 normal;
 } g_phys_intersection_res;
 
-void g_phys_intersection(vec2 t1[3], vec2 t2[3],
+// Test two triangles for physics interactions
+void g_phys_intersection(vec2 p1, vec2 p2, vec2 t1[3], vec2 t2[3],
                          g_phys_intersection_res *result) {
     vec2 norm1[3];
     vec2 norm2[3];
@@ -159,25 +167,23 @@ void g_phys_intersection(vec2 t1[3], vec2 t2[3],
         calculate_normal(t2[i], t2[j], norm2[i]);
     }
 
-    float overlap_min = -FLT_MAX;
-    float overlap_max = FLT_MAX;
     vec2 overlap_normal;
 
     g_phys_intersection_res res;
     res.intersection = true;
+    res.overlap = FLT_MAX;
     res.first = true;
 
     for (int i = 0; i < 3; i++) {
-        float temp_overlap_min = FLT_MAX;
-        float temp_overlap_max = -FLT_MAX;
+        float current_overlap_min = FLT_MAX;
+        float current_overlap_max = -FLT_MAX;
 
         bool overlap = triangle_axis_overlap(
-            t1, norm1[i], t2, &temp_overlap_min, &temp_overlap_max);
+            t1, norm1[i], t2, &current_overlap_min, &current_overlap_max);
 
         if (overlap &&
-            temp_overlap_max - temp_overlap_min < overlap_max - overlap_min) {
-            overlap_min = temp_overlap_min;
-            overlap_max = temp_overlap_max;
+            current_overlap_max - current_overlap_min < res.overlap) {
+            res.overlap = current_overlap_max - current_overlap_min;
             glm_vec2_copy(norm1[i], overlap_normal);
 
         } else if (!overlap) {
@@ -188,16 +194,15 @@ void g_phys_intersection(vec2 t1[3], vec2 t2[3],
     }
 
     for (int i = 0; i < 3; i++) {
-        float temp_overlap_min = FLT_MAX;
-        float temp_overlap_max = -FLT_MAX;
+        float current_overlap_min = FLT_MAX;
+        float current_overlap_max = -FLT_MAX;
 
         bool overlap = triangle_axis_overlap(
-            t2, norm2[i], t1, &temp_overlap_min, &temp_overlap_max);
+            t2, norm2[i], t1, &current_overlap_min, &current_overlap_max);
 
         if (overlap &&
-            temp_overlap_max - temp_overlap_min < overlap_max - overlap_min) {
-            overlap_min = temp_overlap_min;
-            overlap_max = temp_overlap_max;
+            current_overlap_max - current_overlap_min < res.overlap) {
+            res.overlap = current_overlap_max - current_overlap_min;
             glm_vec2_copy(norm2[i], overlap_normal);
 
             res.first = false;
@@ -209,7 +214,18 @@ void g_phys_intersection(vec2 t1[3], vec2 t2[3],
         }
     }
 
-    res.overlap = overlap_max - overlap_min;
+    vec2 dir;
+
+    if (res.first) {
+        glm_vec2_sub(p2, p1, dir);
+    } else {
+        glm_vec2_sub(p1, p2, dir);
+    }
+
+    if (glm_vec2_dot(overlap_normal, dir) < 0) {
+        res.first = !res.first;
+    }
+
     glm_vec2_copy(overlap_normal, res.normal);
     *result = res;
 }
@@ -219,6 +235,8 @@ static inline void g_vec2_mirror(vec2 n, vec2 v) {
     glm_vec2_mulsubs(n, (2.0f * dot) * (dot < 0.0f), v);
 }
 
+// Crappy naive collision detection and response (for now)
+// ... What the fuck is this 'broad phase' you speak of???
 void g_actor_stack_phys(float dt, g_actor_stack *stack) {
     static vec2 t1[3];
     static vec2 t2[3];
@@ -254,23 +272,61 @@ void g_actor_stack_phys(float dt, g_actor_stack *stack) {
                 t2[i][1] = to[1];
             }
 
+            // Detection and response
             g_phys_intersection_res res;
-            g_phys_intersection(t1, t2, &res);
+            g_phys_intersection(tr1->position, tr2->position, t1, t2, &res);
 
             if (res.intersection) {
-                g_velocity *v1 = &stack->velocities[idx1];
-                g_velocity *v2 = &stack->velocities[idx2];
+                const stable_index_t i1 = res.first ? idx1 : idx2;
+                const stable_index_t i2 = res.first ? idx2 : idx1;
 
-                float t1_mul = (!res.first ? 1.0f : -1.0f);
-                float t2_mul = (res.first ? 1.0f : -1.0f);
+                g_velocity *v1 = &stack->velocities[i1];
+                g_velocity *v2 = &stack->velocities[i2];
 
-                glm_vec2_muladds(res.normal, res.overlap * t1_mul,
-                                 tr1->position);
-                glm_vec2_muladds(res.normal, res.overlap * t2_mul,
-                                 tr2->position);
+                float mass1 = stack->mass[i1];
+                float mass2 = stack->mass[i2];
 
-                printf("%s, %f, %f %f \n", res.first ? "true" : "false",
-                       res.overlap, res.normal[0], res.normal[1]);
+                float inv_mass1 = (mass1 > 0) ? 1.0f / mass1 : 0.0f;
+                float inv_mass2 = (mass2 > 0) ? 1.0f / mass2 : 0.0f;
+
+                float sum_inv_mass = inv_mass1 + inv_mass2;
+
+                // If both objects are static, there's no physics to resolve
+                // TODO: skip any collision checks between static object
+                if (sum_inv_mass == 0)
+                    continue;
+
+                vec2 rv;
+                glm_vec2_sub(v2->linear, v1->linear, rv);
+                float vel_along_normal = glm_vec2_dot(rv, res.normal);
+
+                // Only resolve if objects are moving towards each other
+                if (vel_along_normal < 0) {
+                    // Impulse/"bouncyness"
+                    const float e = 0.5f;
+                    float j = -(1.0f + e) * vel_along_normal;
+                    j /= sum_inv_mass;
+
+                    vec2 impulse;
+                    glm_vec2_scale(res.normal, j, impulse);
+                    glm_vec2_muladds(impulse, -inv_mass1, v1->linear);
+                    glm_vec2_muladds(impulse, inv_mass2, v2->linear);
+                }
+
+                // Positional Correction
+                const float percent =
+                    0.6f; // Penetration percentage to correct (0.2 to 0.8)
+                const float slop =
+                    0.01f; // Penetration allowance (prevents jitter)
+
+                float correction_mag =
+                    glm_max(res.overlap - slop, 0.0f) / sum_inv_mass * percent;
+
+                vec2 correction;
+                glm_vec2_scale(res.normal, correction_mag, correction);
+
+                glm_vec2_muladds(correction, -inv_mass1, tr1->position);
+                glm_vec2_muladds(correction, inv_mass2, tr2->position);
             }
         }
     }
