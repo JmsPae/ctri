@@ -24,9 +24,9 @@ target_include_directories(ctri PRIVATE external)
 add_subdirectory(external/minitrace)
 
 # I trust you, b2d
-set(BOX2D_SAMPLES OFF)
-set(BOX2D_UNIT_TESTS OFF)
-add_subdirectory(external/box2d)
+# set(BOX2D_SAMPLES OFF)
+# set(BOX2D_UNIT_TESTS OFF)
+# add_subdirectory(external/box2d)
 
 if (EMSCRIPTEN)
     target_compile_definitions(ctri PRIVATE SOKOL_GLES3)
@@ -44,7 +44,7 @@ if (EMSCRIPTEN)
     target_link_options(ctri PRIVATE -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sUSE_WEBGL2=1 -sALLOW_MEMORY_GROWTH -sMALLOC=emmalloc --closure=1)
 
     # Keeping minitrace just to keep the macros from error'ing
-    target_link_libraries(ctri PRIVATE box2d minitrace)
+    target_link_libraries(ctri PRIVATE minitrace)
 
 else()
     if (CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -74,7 +74,7 @@ else()
     )
 
     find_package(Threads REQUIRED)
-    target_link_libraries(ctri PRIVATE Threads::Threads GL dl m X11 Xi Xcursor box2d minitrace)
+    target_link_libraries(ctri PRIVATE Threads::Threads GL dl m X11 Xi Xcursor minitrace)
 
 endif()
 
